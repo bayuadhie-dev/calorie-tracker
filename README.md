@@ -15,7 +15,7 @@ Developed by **Mochammad Bayu Adhie Nugroho**.
 *   **🎮 Gamified Habit Checklist:** Accomplish daily healthy checklist items (eating fruits/veggies, working out, sleeping early) to hear crisp, retro 8-bit sound effects (Beep, Blip, Level Up!).
 *   **📅 Daily Auto-Reset Guard:** Automatically detects date changes, wraps up today's logs into a summarized historical record, locks the record, and resets the active dashboard.
 *   **💾 Offline Backup & Restore:** Export your entire local SQLite database into a JSON file, share it via native drawers (Google Drive/WhatsApp), and restore your data instantly.
-*   **🔒 100% Offline & Private:** Zero account registration or network connection required. Your personal body metrics and logging data never leave your phone.
+*   **🔒 Offline-First & 100% Private:** Zero account registration required. Your personal body metrics and logging data never leave your phone, with optional hybrid online barcode lookup.
 
 ---
 
