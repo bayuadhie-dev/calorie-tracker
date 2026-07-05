@@ -37,7 +37,7 @@ export const userProfileRepo = {
         id, weight_kg, target_weight_kg, start_weight_kg, height_cm, age, gender, goal, activity_level,
         bmr, tdee, target_calorie, target_carb_g, target_protein_g, target_fat_g, target_water_ml,
         weigh_in_interval_days, last_weigh_in_date, updated_at
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       profile.weight_kg,
       profile.target_weight_kg,
       profile.start_weight_kg,
