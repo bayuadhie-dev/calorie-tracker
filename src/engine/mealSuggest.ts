@@ -12,31 +12,22 @@ export interface FoodItemSuggest {
 
 /**
  * Pure function to suggest foods for a specific meal slot.
- * Excludes restricted tags, prioritizes preferred tags, and orders by closest calorie match.
+ * Excludes restricted tags, prioritizes preferred tags, and orders by closest calorie match to slotTargetCalorie.
  * Testable without database.
  */
 export function suggestMealsForSlot(
-  slot: 'breakfast' | 'lunch' | 'dinner' | 'snack',
-  dailyCalorieTarget: number,
+  slotTargetCalorie: number,
   foods: FoodItemSuggest[],
   restrictedTagIds: number[],
   preferredTagIds: number[]
 ): FoodItemSuggest[] {
-  // 1. Calculate slot calorie target
-  let slotRatio = 0.25; // breakfast
-  if (slot === 'lunch') slotRatio = 0.35;
-  else if (slot === 'dinner') slotRatio = 0.30;
-  else if (slot === 'snack') slotRatio = 0.10;
-
-  const slotTargetCalorie = dailyCalorieTarget * slotRatio;
-
-  // 2. Filter foods: exclude restricted tags
+  // 1. Filter foods: exclude restricted tags
   const filteredFoods = foods.filter((food) => {
     const isRestricted = food.tagIds.some((tId) => restrictedTagIds.includes(tId));
     return !isRestricted;
   });
 
-  // 3. Score foods based on preferences and calorie closeness
+  // 2. Score foods based on preferences and calorie closeness
   const scoredFoods = filteredFoods.map((food) => {
     // Preference match count
     const prefMatchCount = food.tagIds.filter((tId) => preferredTagIds.includes(tId)).length;
@@ -55,7 +46,7 @@ export function suggestMealsForSlot(
     };
   });
 
-  // 4. Sort: prefMatchCount DESC, then calorieDiff ASC
+  // 3. Sort: prefMatchCount DESC, then calorieDiff ASC
   scoredFoods.sort((a, b) => {
     if (b.prefMatchCount !== a.prefMatchCount) {
       return b.prefMatchCount - a.prefMatchCount; // higher matches first
@@ -63,6 +54,6 @@ export function suggestMealsForSlot(
     return a.calorieDiff - b.calorieDiff; // closer calorie first
   });
 
-  // 5. Limit to 5 suggestions
+  // 4. Limit to 5 suggestions
   return scoredFoods.slice(0, 5).map((sf) => sf.food);
 }

@@ -349,22 +349,47 @@ export default function MealPlanner() {
     let slotCurrentCal = 0;
 
     if (searchQuery.trim().length === 0 && !selectedFood && profile) {
-      let slotRatio = 0.25;
-      if (activeMealType === 'lunch') slotRatio = 0.35;
-      else if (activeMealType === 'dinner') slotRatio = 0.30;
-      else if (activeMealType === 'snack') slotRatio = 0.10;
+      const chronologicalSlots: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+      const activeIndex = chronologicalSlots.indexOf(activeMealType);
 
-      slotTargetCal = (profile.target_calorie || 2000) * slotRatio;
+      // Remaining slots are the active slot and any slot after it
+      const remainingSlots = chronologicalSlots.slice(activeIndex);
+      // Completed slots are any slots before the active slot
+      const completedSlots = chronologicalSlots.slice(0, activeIndex);
+
+      let sumRatios = 0;
+      remainingSlots.forEach((s) => {
+        if (s === 'breakfast') sumRatios += 0.25;
+        else if (s === 'lunch') sumRatios += 0.35;
+        else if (s === 'dinner') sumRatios += 0.30;
+        else if (s === 'snack') sumRatios += 0.10;
+      });
+
+      let activeRatio = 0.25;
+      if (activeMealType === 'lunch') activeRatio = 0.35;
+      else if (activeMealType === 'dinner') activeRatio = 0.30;
+      else if (activeMealType === 'snack') activeRatio = 0.10;
+
+      // Sum actual calories logged in completed slots
+      const totalConsumedInCompletedSlots = foodLogs
+        .filter((l) => completedSlots.includes(l.meal_type))
+        .reduce((sum, item) => sum + item.calorie, 0);
+
+      const remainingDailyCalorie = Math.max(0, profile.target_calorie - totalConsumedInCompletedSlots);
+
+      // Scale slot target based on remaining daily calorie budget
+      slotTargetCal = sumRatios > 0 ? remainingDailyCalorie * (activeRatio / sumRatios) : 0;
+
       slotCurrentCal = foodLogs
         .filter((l) => l.meal_type === activeMealType)
         .reduce((sum, item) => sum + item.calorie, 0);
 
-      isSlotFulfilled = slotTargetCal - slotCurrentCal <= 0;
+      const sisaSlotTarget = Math.max(0, slotTargetCal - slotCurrentCal);
+      isSlotFulfilled = sisaSlotTarget <= 0;
 
       if (!isSlotFulfilled && candidates.length > 0) {
         suggestions = suggestMealsForSlot(
-          activeMealType,
-          profile.target_calorie || 2000,
+          sisaSlotTarget,
           candidates,
           restrictionTagIds,
           preferenceTagIds
