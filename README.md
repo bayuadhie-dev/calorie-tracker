@@ -103,6 +103,20 @@ We use **Expo Application Services (EAS)** Cloud Build to generate direct Androi
     ```
 5.  Once the build finishes (approx. 5-8 minutes), scan the final terminal QR Code or click the download link to download the `.apk` file directly to your phone!
 
+## 📝 Changelog
+
+### Version 2.0.0 (FINAL BMR Update)
+*   **Database Schema (v2):** Added support for weight logging, daily notes, achievements, and food preferences. Automatically migrates the SQLite DB from version 1 to 2 on startup.
+*   **Indonesian Local Supplementary Foods:** Seeded 425 popular local dishes and snacks securely (`INSERT OR IGNORE` to bypass duplicate tag constraints) for accurate local search.
+*   **Realistic Hybrid Weight Projections:** Blends teoretis expected deficits (`TDEE - target_calorie`) with actual logs average (7-day rolling weight) to output realistic target dates from Day 1.
+*   **Achievements Gamification:** Integrated 17 achievements (milestones, streaks, consistency), a BADGE tab menu screen, and a floating global Achievement Toast with retro sound effects.
+*   **Dynamic Meal Auto-Suggest:** Auto-recommends 5 slot-tailored meals with chronological leftover rollover (rolled over calories from skipped/light meals to future slots).
+*   **Quick Log "Salin dari Kemarin":** Easily copy yesterday's logged foods to today.
+*   **Daily Notes & Mood Picking:** Track 5 mood emojis and a 200-char text note. Mood and notes are joined and displayed directly on the History screen logs.
+*   **Streak Freeze Rule:** Keeps food logging streaks alive by consuming 1 freeze per week (resets on Monday) if a day is skipped.
+*   **Local Reminder Notifications:** Integrated `expo-notifications` for daily alerts at 08:00 (Weigh-in), 12:30 (Lunch log), and 16:00 (Water check), togglable in Settings.
+*   **Complete Settings Editor:** Allows updating all biodata parameters, target weight, weigh-in intervals, and diet tag checklists with real-time recalculations.
+
 ---
 
 ## 📜 License
