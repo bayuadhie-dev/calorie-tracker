@@ -385,7 +385,7 @@ export async function initDb(): Promise<void> {
         if (item.portions && item.portions.length > 0) {
           for (const port of item.portions) {
             await db.runAsync(
-              'INSERT INTO food_portion_units (food_item_id, unit_label, grams_equivalent) VALUES (?, ?, ?)',
+              'INSERT OR IGNORE INTO food_portion_units (food_item_id, unit_label, grams_equivalent) VALUES (?, ?, ?)',
               foodId,
               port.unit_label,
               port.grams_equivalent
@@ -398,7 +398,7 @@ export async function initDb(): Promise<void> {
             const tagId = tagMap.get(tagCode);
             if (tagId !== undefined) {
               await db.runAsync(
-                'INSERT INTO food_item_tags (food_item_id, tag_id) VALUES (?, ?)',
+                'INSERT OR IGNORE INTO food_item_tags (food_item_id, tag_id) VALUES (?, ?)',
                 foodId,
                 tagId
               );
@@ -436,7 +436,7 @@ export async function initDb(): Promise<void> {
         if (item.portions && item.portions.length > 0) {
           for (const port of item.portions) {
             await db.runAsync(
-              'INSERT INTO food_portion_units (food_item_id, unit_label, grams_equivalent) VALUES (?, ?, ?)',
+              'INSERT OR IGNORE INTO food_portion_units (food_item_id, unit_label, grams_equivalent) VALUES (?, ?, ?)',
               foodId,
               port.unit_label,
               port.grams_equivalent
@@ -449,7 +449,7 @@ export async function initDb(): Promise<void> {
             const tagId = tagMap.get(tagCode);
             if (tagId !== undefined) {
               await db.runAsync(
-                'INSERT INTO food_item_tags (food_item_id, tag_id) VALUES (?, ?)',
+                'INSERT OR IGNORE INTO food_item_tags (food_item_id, tag_id) VALUES (?, ?)',
                 foodId,
                 tagId
               );
