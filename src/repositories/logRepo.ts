@@ -6,7 +6,7 @@ export interface FoodLog {
   id: number;
   food_item_id: number | null;
   food_name?: string; // Joined from food_items
-  food_source?: 'tkpi' | 'custom';
+  food_source?: 'tkpi' | 'custom' | 'local';
   log_date: string;
   meal_type: MealType;
   serving_g: number;
@@ -58,5 +58,37 @@ export const logRepo = {
   async deleteFoodLog(logId: number): Promise<void> {
     const db = await getDb();
     await db.runAsync('DELETE FROM food_logs WHERE id = ?', logId);
+  },
+
+  async getYesterdayLogs(yesterdayDate: string): Promise<FoodLog[]> {
+    return this.getFoodLogs(yesterdayDate);
+  },
+
+  async copyLogsToToday(ids: number[], todayDate: string): Promise<void> {
+    const db = await getDb();
+    if (ids.length === 0) return;
+
+    await db.withTransactionAsync(async () => {
+      const placeholders = ids.map(() => '?').join(',');
+      const logsToCopy = await db.getAllAsync<FoodLog>(
+        `SELECT * FROM food_logs WHERE id IN (${placeholders})`,
+        ...ids
+      );
+
+      for (const log of logsToCopy) {
+        await db.runAsync(
+          `INSERT INTO food_logs (food_item_id, log_date, meal_type, serving_g, calorie, carb_g, protein_g, fat_g)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          log.food_item_id,
+          todayDate,
+          log.meal_type,
+          log.serving_g,
+          log.calorie,
+          log.carb_g,
+          log.protein_g,
+          log.fat_g
+        );
+      }
+    });
   }
 };

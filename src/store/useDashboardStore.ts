@@ -33,6 +33,7 @@ interface DashboardStore {
   logWater: (amountMl: number) => Promise<void>;
   undoWaterLog: () => Promise<void>;
   toggleChecklistItem: (id: number, isDone: boolean) => Promise<void>;
+  copyYesterdayLogs: (ids: number[]) => Promise<void>;
 }
 
 export const getTodayLocalDateString = (): string => {
@@ -136,4 +137,14 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       console.error('Failed to toggle checklist item:', error);
     }
   },
+
+  copyYesterdayLogs: async (ids) => {
+    const { selectedDate } = get();
+    try {
+      await logRepo.copyLogsToToday(ids, selectedDate);
+      await get().loadDailyData();
+    } catch (error) {
+      console.error('Failed to copy food logs:', error);
+    }
+  }
 }));

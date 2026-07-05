@@ -3,20 +3,26 @@ import { StyleSheet, Text, View, ScrollView, SafeAreaView, TextInput, Pressable,
 import { useDashboardStore } from '../../src/store/useDashboardStore';
 import { useProfileStore } from '../../src/store/useProfileStore';
 import { foodRepo, FoodItem, FoodPortion } from '../../src/repositories/foodRepo';
-import { MealType, FoodLog } from '../../src/repositories/logRepo';
+import { MealType, FoodLog, logRepo } from '../../src/repositories/logRepo';
+import { suggestMealsForSlot, FoodItemSuggest } from '../../src/engine/mealSuggest';
+import { mealPlannerRepo } from '../../src/repositories/mealPlannerRepo';
 import PixelButton from '../../src/components/ui/PixelButton';
 import PixelCard from '../../src/components/ui/PixelCard';
 import { useSfx } from '../../src/hooks/useSfx';
 
-type SubView = 'meals' | 'search' | 'custom_food';
+type SubView = 'meals' | 'search' | 'custom_food' | 'copy_yesterday';
 
 export default function MealPlanner() {
-  const { profile, restrictionTagIds } = useProfileStore();
-  const { foodLogs, logFood, removeFoodLog } = useDashboardStore();
+  const { profile, restrictionTagIds, preferenceTagIds } = useProfileStore();
+  const { foodLogs, logFood, removeFoodLog, copyYesterdayLogs } = useDashboardStore();
   const { playSfx } = useSfx();
 
   const [currentView, setCurrentView] = useState<SubView>('meals');
   const [activeMealType, setActiveMealType] = useState<MealType>('breakfast');
+
+  // Suggest Candidates State
+  const [candidates, setCandidates] = useState<FoodItemSuggest[]>([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(true);
 
   // Search View State
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,7 +30,7 @@ export default function MealPlanner() {
   const [searching, setSearching] = useState(false);
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
   const [portions, setPortions] = useState<FoodPortion[]>([]);
-  const [selectedPortionIndex, setSelectedPortionIndex] = useState<number>(0); // Index in portions
+  const [selectedPortionIndex, setSelectedPortionIndex] = useState<number>(0);
   const [quantity, setQuantity] = useState('1');
   const [customGrams, setCustomGrams] = useState('100');
 
@@ -38,9 +44,33 @@ export default function MealPlanner() {
   const [customPortionGrams, setCustomPortionGrams] = useState('');
   const [customError, setCustomError] = useState('');
 
-  // 1. Search foods when search query changes
+  // Copy Yesterday State
+  const [yesterdayLogs, setYesterdayLogs] = useState<FoodLog[]>([]);
+  const [selectedYesterdayIds, setSelectedYesterdayIds] = useState<number[]>([]);
+  const [loadingYesterday, setLoadingYesterday] = useState(false);
+
+  // Load food candidates for suggestion engine on mount
+  useEffect(() => {
+    async function loadCandidates() {
+      try {
+        const data = await mealPlannerRepo.getFoodCandidates();
+        setCandidates(data);
+      } catch (err) {
+        console.error('Failed to load food candidates for suggest:', err);
+      } finally {
+        setLoadingCandidates(false);
+      }
+    }
+    loadCandidates();
+  }, [foodLogs]); // Reload when logs change so we have fresh state
+
+  // Search foods when search query changes
   useEffect(() => {
     if (currentView !== 'search') return;
+    if (searchQuery.trim().length === 0) {
+      setSearchResults([]);
+      return;
+    }
     
     const delayDebounce = setTimeout(async () => {
       setSearching(true);
@@ -57,7 +87,16 @@ export default function MealPlanner() {
     return () => clearTimeout(delayDebounce);
   }, [searchQuery, currentView, restrictionTagIds]);
 
-  // 2. Load portions when a food is selected
+  const getYesterdayDateString = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Load portions when a food is selected
   const handleSelectFood = async (food: FoodItem) => {
     playSfx('beep');
     setSelectedFood(food);
@@ -73,7 +112,7 @@ export default function MealPlanner() {
     }
   };
 
-  // 3. Log food from search view
+  // Log food from search view
   const handleAddLog = async () => {
     if (!selectedFood) return;
 
@@ -102,7 +141,7 @@ export default function MealPlanner() {
     handleBackToMeals();
   };
 
-  // 4. Save and Log Custom Food
+  // Save and Log Custom Food
   const handleSaveCustomFood = async () => {
     setCustomError('');
     if (!customName.trim()) {
@@ -139,7 +178,6 @@ export default function MealPlanner() {
       );
 
       // Log immediately for today
-      // Default log serving: if custom portion was specified, log 1 portion of it, else log 100g
       const grams = kPortions.length > 0 ? kPortions[0].grams_equivalent : 100;
       const factor = grams / 100;
 
@@ -158,6 +196,44 @@ export default function MealPlanner() {
     } catch (err) {
       console.error(err);
       setCustomError('GAGAL MENYIMPAN MAKANAN KUSTOM.');
+    }
+  };
+
+  const handleOpenCopyYesterday = async () => {
+    playSfx('beep');
+    setLoadingYesterday(true);
+    setCurrentView('copy_yesterday');
+    setSelectedYesterdayIds([]);
+    try {
+      const yDate = getYesterdayDateString();
+      const logs = await logRepo.getYesterdayLogs(yDate);
+      setYesterdayLogs(logs);
+    } catch (err) {
+      console.error('Failed to load yesterday logs:', err);
+      setYesterdayLogs([]);
+    } finally {
+      setLoadingYesterday(false);
+    }
+  };
+
+  const toggleYesterdaySelection = (id: number) => {
+    playSfx('beep');
+    setSelectedYesterdayIds((prev) =>
+      prev.includes(id) ? prev.filter((yId) => yId !== id) : [...prev, id]
+    );
+  };
+
+  const handleExecuteCopy = async () => {
+    if (selectedYesterdayIds.length === 0) return;
+    setLoadingYesterday(true);
+    try {
+      await copyYesterdayLogs(selectedYesterdayIds);
+      playSfx('blip');
+      setCurrentView('meals');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingYesterday(false);
     }
   };
 
@@ -199,8 +275,14 @@ export default function MealPlanner() {
 
     return (
       <View style={styles.mealsContainer}>
-        <View style={styles.header}>
+        <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>MEAL PLANNER</Text>
+          <PixelButton
+            style={styles.copyBtn}
+            onPress={handleOpenCopyYesterday}
+          >
+            📋 SALIN KEMARIN
+          </PixelButton>
         </View>
 
         {mealTypes.map((mt) => {
@@ -260,6 +342,36 @@ export default function MealPlanner() {
   const renderSearchView = () => {
     const liveNut = calculateLiveNutrition();
 
+    // Calculate auto suggestions if searchQuery is empty and no food selected
+    let suggestions: FoodItemSuggest[] = [];
+    let isSlotFulfilled = false;
+    let slotTargetCal = 0;
+    let slotCurrentCal = 0;
+
+    if (searchQuery.trim().length === 0 && !selectedFood && profile) {
+      let slotRatio = 0.25;
+      if (activeMealType === 'lunch') slotRatio = 0.35;
+      else if (activeMealType === 'dinner') slotRatio = 0.30;
+      else if (activeMealType === 'snack') slotRatio = 0.10;
+
+      slotTargetCal = (profile.target_calorie || 2000) * slotRatio;
+      slotCurrentCal = foodLogs
+        .filter((l) => l.meal_type === activeMealType)
+        .reduce((sum, item) => sum + item.calorie, 0);
+
+      isSlotFulfilled = slotTargetCal - slotCurrentCal <= 0;
+
+      if (!isSlotFulfilled && candidates.length > 0) {
+        suggestions = suggestMealsForSlot(
+          activeMealType,
+          profile.target_calorie || 2000,
+          candidates,
+          restrictionTagIds,
+          preferenceTagIds
+        );
+      }
+    }
+
     return (
       <View style={styles.searchContainer}>
         <View style={styles.searchHeader}>
@@ -293,7 +405,6 @@ export default function MealPlanner() {
                 </Pressable>
               ))}
 
-              {/* Direct Grams Input */}
               <Pressable
                 onPress={() => setSelectedPortionIndex(portions.length)}
                 style={styles.portionOptionPressable}
@@ -327,7 +438,6 @@ export default function MealPlanner() {
               </View>
             )}
 
-            {/* Live Calculation Aggregates */}
             <View style={styles.liveCalculationBox}>
               <Text style={styles.liveCalTitle}>ESTIMASI GIZI LOG:</Text>
               <Text style={styles.liveCalVal}>{liveNut.grams} GRAM • {liveNut.cal} KCAL</Text>
@@ -367,33 +477,65 @@ export default function MealPlanner() {
               + BUAT MAKANAN KUSTOM BARU
             </PixelButton>
 
-            {searching ? (
-              <ActivityIndicator size="large" color="#000000" style={{ marginTop: 24 }} />
-            ) : (
-              <ScrollView style={styles.searchResultsScroll}>
-                {searchResults.length === 0 ? (
-                  <Text style={styles.noResultsText}>
-                    {searchQuery.trim().length > 0
-                      ? 'MAKANAN TIDAK DITEMUKAN.'
-                      : 'Ketik pencarian di atas...'}
-                  </Text>
+            {/* Display Auto Suggest Recommendations */}
+            {searchQuery.trim().length === 0 && (
+              <View style={styles.suggestSection}>
+                <Text style={styles.suggestHeader}>👾 REKOMENDASI UNTUK {activeMealType.toUpperCase()}:</Text>
+                {isSlotFulfilled ? (
+                  <PixelCard style={styles.suggestMsgCard} innerStyle={{ padding: 12 }}>
+                    <Text style={styles.suggestMsgText}>SLOT INI SUDAH TERPENUHI harian.</Text>
+                  </PixelCard>
+                ) : loadingCandidates ? (
+                  <ActivityIndicator size="small" color="#000000" style={{ marginTop: 12 }} />
+                ) : suggestions.length === 0 ? (
+                  <Text style={styles.noResultsText}>BELUM ADA DATA REKOMENDASI.</Text>
                 ) : (
-                  searchResults.map((food) => (
-                    <Pressable
-                      key={food.id}
-                      onPress={() => handleSelectFood(food)}
-                      style={styles.searchResultItem}
-                    >
-                      <Text style={styles.searchResultName}>
-                        {food.name.toUpperCase()}
-                      </Text>
-                      <Text style={styles.searchResultCal}>
-                        {food.calorie_per_100g} KCAL / 100G
-                      </Text>
-                    </Pressable>
-                  ))
+                  <View style={styles.suggestList}>
+                    {suggestions.map((food) => (
+                      <Pressable
+                        key={food.id}
+                        onPress={() => handleSelectFood(food as any)}
+                        style={styles.searchResultItem}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.searchResultName}>{food.name.toUpperCase()}</Text>
+                          <Text style={styles.searchResultCal}>
+                            {food.calorie_per_100g} KCAL/100G
+                          </Text>
+                        </View>
+                        <Text style={styles.tapText}>{"+"}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
                 )}
-              </ScrollView>
+              </View>
+            )}
+
+            {searchQuery.trim().length > 0 && (
+              searching ? (
+                <ActivityIndicator size="large" color="#000000" style={{ marginTop: 24 }} />
+              ) : (
+                <ScrollView style={styles.searchResultsScroll}>
+                  {searchResults.length === 0 ? (
+                    <Text style={styles.noResultsText}>MAKANAN TIDAK DITEMUKAN.</Text>
+                  ) : (
+                    searchResults.map((food) => (
+                      <Pressable
+                        key={food.id}
+                        onPress={() => handleSelectFood(food)}
+                        style={styles.searchResultItem}
+                      >
+                        <Text style={styles.searchResultName}>
+                          {food.name.toUpperCase()}
+                        </Text>
+                        <Text style={styles.searchResultCal}>
+                          {food.calorie_per_100g} KCAL / 100G
+                        </Text>
+                      </Pressable>
+                    ))
+                  )}
+                </ScrollView>
+              )
             )}
           </>
         )}
@@ -460,7 +602,7 @@ export default function MealPlanner() {
               <TextInput
                 style={styles.input}
                 keyboardType="numeric"
-                placeholder="8"
+                placeholder="10"
                 placeholderTextColor="#888888"
                 value={customProt}
                 onChangeText={(val) => setCustomProt(val.replace(/[^0-9.]/g, ''))}
@@ -471,7 +613,7 @@ export default function MealPlanner() {
               <TextInput
                 style={styles.input}
                 keyboardType="numeric"
-                placeholder="10"
+                placeholder="8"
                 placeholderTextColor="#888888"
                 value={customFat}
                 onChangeText={(val) => setCustomFat(val.replace(/[^0-9.]/g, ''))}
@@ -479,36 +621,104 @@ export default function MealPlanner() {
             </View>
           </View>
 
-          {/* Optional Portion configuration */}
-          <Text style={styles.portionHeading}>OPSI PORSI KUSTOM (OPSIONAL):</Text>
+          <Text style={styles.portionHeading}>PENGATURAN PORSI BAWAAN (OPSIONAL):</Text>
+
           <View style={styles.giziGrid}>
-            <View style={{ flex: 1.5, marginRight: 8 }}>
-              <Text style={styles.label}>NAMA UNIT:</Text>
+            <View style={{ flex: 2, marginRight: 8 }}>
+              <Text style={styles.label}>NAMA PORSI (MISAL: 1 BUNGKUS):</Text>
               <TextInput
                 style={styles.input}
-                placeholder="MISAL: MANGKOK"
+                placeholder="bungkus"
                 placeholderTextColor="#888888"
                 value={customPortionLabel}
                 onChangeText={setCustomPortionLabel}
               />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>BERAT (G):</Text>
+            <View style={{ flex: 1.2 }}>
+              <Text style={styles.label}>BERAT PORSI (GRAM):</Text>
               <TextInput
                 style={styles.input}
                 keyboardType="numeric"
-                placeholder="220"
+                placeholder="85"
                 placeholderTextColor="#888888"
                 value={customPortionGrams}
                 onChangeText={(val) => setCustomPortionGrams(val.replace(/[^0-9.]/g, ''))}
               />
             </View>
           </View>
-        </PixelCard>
 
-        <PixelButton style={{ marginTop: 16 }} onPress={handleSaveCustomFood}>
-          SIMPAN & LOG MAKANAN
-        </PixelButton>
+          <PixelButton style={{ marginTop: 8 }} onPress={handleSaveCustomFood}>
+            SIMPAN & CATAT MAKANAN
+          </PixelButton>
+        </PixelCard>
+      </View>
+    );
+  };
+
+  const renderCopyYesterdayView = () => {
+    return (
+      <View style={styles.copyContainer}>
+        <View style={styles.searchHeader}>
+          <PixelButton style={styles.backBtn} onPress={() => setCurrentView('meals')}>
+            {"<- BATAL"}
+          </PixelButton>
+          <Text style={styles.searchTitle}>SALIN DARI KEMARIN</Text>
+        </View>
+
+        {loadingYesterday ? (
+          <ActivityIndicator size="large" color="#000000" style={{ marginTop: 24 }} />
+        ) : (
+          <View style={{ flex: 1 }}>
+            <Text style={styles.copySubtitle}>PILIH MAKANAN UNTUK DISALIN KE HARI INI:</Text>
+            
+            <ScrollView style={styles.copyLogsScroll}>
+              {yesterdayLogs.length === 0 ? (
+                <Text style={styles.noResultsText}>TIDAK ADA RIWAYAT MAKANAN KEMARIN.</Text>
+              ) : (
+                yesterdayLogs.map((log) => {
+                  const isSelected = selectedYesterdayIds.includes(log.id);
+                  return (
+                    <Pressable
+                      key={log.id}
+                      onPress={() => toggleYesterdaySelection(log.id)}
+                      style={styles.copyLogItem}
+                    >
+                      <PixelCard
+                        style={[styles.copyLogCard, isSelected ? styles.selectedCard : null]}
+                        innerStyle={{ padding: 12 }}
+                        hasShadow={false}
+                      >
+                        <View style={styles.checkboxRow}>
+                          <Text style={styles.checkboxText}>
+                            {isSelected ? '[X]' : '[ ]'}
+                          </Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.copyLogFoodName}>
+                              {log.food_name?.toUpperCase() || 'MAKANAN'}
+                            </Text>
+                            <Text style={styles.copyLogFoodDetail}>
+                              {log.meal_type.toUpperCase()} • {Math.round(log.serving_g)}G • {Math.round(log.calorie)} KCAL
+                            </Text>
+                          </View>
+                        </View>
+                      </PixelCard>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {yesterdayLogs.length > 0 && (
+              <PixelButton 
+                style={styles.executeCopyBtn}
+                onPress={handleExecuteCopy}
+                disabled={selectedYesterdayIds.length === 0}
+              >
+                SALIN {selectedYesterdayIds.length} MAKANAN KE HARI INI
+              </PixelButton>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -520,6 +730,7 @@ export default function MealPlanner() {
           {currentView === 'meals' && renderMealsView()}
           {currentView === 'search' && renderSearchView()}
           {currentView === 'custom_food' && renderCustomFoodView()}
+          {currentView === 'copy_yesterday' && renderCopyYesterdayView()}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -535,91 +746,97 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   container: {
-    padding: 20,
+    flex: 1,
+    padding: 16,
   },
-  header: {
-    marginBottom: 20,
+  mealsContainer: {
+    flex: 1,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
   headerTitle: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 14,
     color: '#000000',
   },
-  mealsContainer: {
-    flexDirection: 'column',
+  copyBtn: {
+    minWidth: 100,
   },
   mealCard: {
     marginBottom: 16,
   },
   mealHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     borderBottomWidth: 2,
     borderBottomColor: '#000000',
-    paddingBottom: 12,
-    marginBottom: 12,
+    paddingBottom: 10,
+    marginBottom: 10,
   },
   mealLabel: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 10,
     color: '#000000',
+    marginBottom: 4,
   },
   mealCalSum: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 8,
     color: '#888888',
-    marginTop: 4,
   },
   addFoodBtn: {
     width: 90,
-    height: 36,
   },
   logList: {
     flexDirection: 'column',
   },
   emptyLogText: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 7,
+    fontSize: 8,
     color: '#888888',
     textAlign: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
   logItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    justifyContent: 'space-between',
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5E5',
   },
   logFoodName: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 8,
+    fontSize: 9,
     color: '#000000',
-    lineHeight: 12,
+    marginBottom: 4,
+    lineHeight: 14,
   },
   logFoodGrams: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
+    fontSize: 7,
     color: '#888888',
-    marginTop: 4,
   },
   deleteLogBtn: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
+    minHeight: 32,
   },
   searchContainer: {
-    flexDirection: 'column',
+    flex: 1,
   },
   searchHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   backBtn: {
-    width: 110,
-    height: 36,
+    width: 100,
     marginRight: 12,
   },
   searchTitle: {
@@ -627,6 +844,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#000000',
     flex: 1,
+    textAlign: 'right',
   },
   searchBarRow: {
     marginBottom: 12,
@@ -637,61 +855,63 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#000000',
     backgroundColor: '#FFFFFF',
-    height: 40,
+    height: 44,
     paddingHorizontal: 12,
+    textAlignVertical: 'center',
     paddingVertical: 0,
     color: '#000000',
   },
   customFoodRedirectBtn: {
     marginBottom: 16,
-    height: 36,
   },
   searchResultsScroll: {
     maxHeight: 400,
-    borderWidth: 2,
-    borderColor: '#000000',
-  },
-  searchResultItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#000000',
-    backgroundColor: '#FFFFFF',
-  },
-  searchResultName: {
-    fontFamily: 'PressStart2P-Regular',
-    fontSize: 8,
-    color: '#000000',
-    lineHeight: 12,
-  },
-  searchResultCal: {
-    fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
-    color: '#888888',
-    marginTop: 4,
   },
   noResultsText: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 8,
     color: '#888888',
     textAlign: 'center',
-    paddingVertical: 24,
+    marginTop: 24,
+    lineHeight: 14,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: '#E5E5E5',
+  },
+  searchResultName: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 8,
+    color: '#000000',
+    lineHeight: 14,
+    flex: 1,
+  },
+  searchResultCal: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 7,
+    color: '#888888',
   },
   portionCard: {
-    marginBottom: 16,
+    padding: 16,
   },
   selectedFoodName: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 10,
+    fontSize: 11,
     color: '#000000',
-    lineHeight: 14,
+    lineHeight: 16,
     marginBottom: 6,
   },
   selectedFoodGizi: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
+    fontSize: 7,
     color: '#888888',
-    lineHeight: 10,
     marginBottom: 16,
+    lineHeight: 12,
   },
   portionOptions: {
     marginBottom: 16,
@@ -700,7 +920,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PressStart2P-Regular',
     fontSize: 8,
     color: '#000000',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   portionOptionPressable: {
     paddingVertical: 8,
@@ -711,9 +931,11 @@ const styles = StyleSheet.create({
     fontFamily: 'PressStart2P-Regular',
     fontSize: 8,
     color: '#888888',
+    lineHeight: 12,
   },
   activePortionText: {
     color: '#000000',
+    fontWeight: 'bold',
   },
   qtyRow: {
     flexDirection: 'row',
@@ -724,11 +946,11 @@ const styles = StyleSheet.create({
     fontFamily: 'PressStart2P-Regular',
     fontSize: 8,
     color: '#000000',
-    flex: 1,
+    marginRight: 12,
   },
   qtyInput: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 10,
+    fontSize: 9,
     borderWidth: 2,
     borderColor: '#000000',
     backgroundColor: '#FFFFFF',
@@ -741,10 +963,9 @@ const styles = StyleSheet.create({
   },
   liveCalculationBox: {
     borderWidth: 2,
-    borderStyle: 'dashed',
     borderColor: '#000000',
     padding: 12,
-    backgroundColor: '#F3F3F3',
+    backgroundColor: '#E5E5E5',
     marginBottom: 16,
   },
   liveCalTitle: {
@@ -824,5 +1045,86 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: '#000000',
     textAlign: 'center',
+  },
+  // Suggest Styles
+  suggestSection: {
+    marginTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: '#000000',
+    paddingTop: 16,
+  },
+  suggestHeader: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 9,
+    color: '#000000',
+    marginBottom: 12,
+  },
+  suggestList: {
+    flexDirection: 'column',
+  },
+  tapText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 12,
+    color: '#888888',
+    marginLeft: 8,
+  },
+  suggestMsgCard: {
+    backgroundColor: '#E5E5E5',
+  },
+  suggestMsgText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 8,
+    color: '#000000',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  // Copy Styles
+  copyContainer: {
+    flex: 1,
+  },
+  copySubtitle: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 8,
+    color: '#888888',
+    lineHeight: 14,
+    marginBottom: 16,
+  },
+  copyLogsScroll: {
+    maxHeight: 380,
+    marginBottom: 16,
+  },
+  copyLogItem: {
+    marginBottom: 8,
+  },
+  copyLogCard: {
+    backgroundColor: '#FFFFFF',
+  },
+  selectedCard: {
+    backgroundColor: '#E5E5E5',
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkboxText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 10,
+    color: '#000000',
+    marginRight: 12,
+  },
+  copyLogFoodName: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 8,
+    color: '#000000',
+    marginBottom: 4,
+    lineHeight: 12,
+  },
+  copyLogFoodDetail: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 7,
+    color: '#888888',
+  },
+  executeCopyBtn: {
+    marginTop: 8,
   },
 });
