@@ -3,6 +3,7 @@ import { userProfileRepo } from '../repositories/userProfileRepo';
 import { logRepo } from '../repositories/logRepo';
 import { waterRepo } from '../repositories/waterRepo';
 import { activityRepo } from '../repositories/activityRepo';
+import { calculateNextStreaks, StreakState, DailySummary } from './streakEngine';
 
 export async function checkAndPerformDailyReset(todayStr: string): Promise<boolean> {
   const db = await getDb();
@@ -18,6 +19,10 @@ export async function checkAndPerformDailyReset(todayStr: string): Promise<boole
       "INSERT OR REPLACE INTO app_state (key, value) VALUES ('last_opened_date', ?)",
       todayStr
     );
+    await db.runAsync("INSERT OR REPLACE INTO app_state (key, value) VALUES ('active_food_log_streak', '0')");
+    await db.runAsync("INSERT OR REPLACE INTO app_state (key, value) VALUES ('active_water_streak', '0')");
+    await db.runAsync("INSERT OR REPLACE INTO app_state (key, value) VALUES ('weigh_in_streak', '0')");
+    await db.runAsync("INSERT OR REPLACE INTO app_state (key, value) VALUES ('streak_freeze_used_this_week', 'false')");
     return false;
   }
 
@@ -32,9 +37,10 @@ export async function checkAndPerformDailyReset(todayStr: string): Promise<boole
 
   // 3. Lock previous day's data into daily_history
   await db.withTransactionAsync(async () => {
-    // Get target calorie from profile
+    // Get profile details
     const profile = await userProfileRepo.getUserProfile();
     const targetCalorie = profile?.target_calorie || 2000;
+    const targetWater = profile?.target_water_ml || 2000;
 
     // Get food logs sum for lastOpenedDate
     const foodLogs = await logRepo.getFoodLogs(lastOpenedDate);
@@ -71,6 +77,52 @@ export async function checkAndPerformDailyReset(todayStr: string): Promise<boole
       checklistSummary.completed,
       checklistSummary.total
     );
+
+    // 4. Calculate Streak updates (v2)
+    const foodStreakRow = await db.getFirstAsync<{ value: string }>("SELECT value FROM app_state WHERE key = 'active_food_log_streak'");
+    const currentFoodStreak = foodStreakRow ? parseInt(foodStreakRow.value, 10) : 0;
+
+    const waterStreakRow = await db.getFirstAsync<{ value: string }>("SELECT value FROM app_state WHERE key = 'active_water_streak'");
+    const currentWaterStreak = waterStreakRow ? parseInt(waterStreakRow.value, 10) : 0;
+
+    const freezeUsedRow = await db.getFirstAsync<{ value: string }>("SELECT value FROM app_state WHERE key = 'streak_freeze_used_this_week'");
+    const currentFreezeUsed = freezeUsedRow ? freezeUsedRow.value === 'true' : false;
+
+    // Calculate elapsed days
+    const lastTime = new Date(lastOpenedDate).getTime();
+    const todayTime = new Date(todayStr).getTime();
+    const daysMissed = Math.max(1, Math.round((todayTime - lastTime) / (1000 * 60 * 60 * 24)));
+
+    const isMonday = new Date(todayStr).getDay() === 1;
+
+    const currentState: StreakState = {
+      foodLogStreak: currentFoodStreak,
+      waterStreak: currentWaterStreak,
+      freezeUsedThisWeek: currentFreezeUsed,
+    };
+
+    const yesterdaySummary: DailySummary = {
+      calorieLogged: totals.calorie,
+      waterLogged: totalWaterMl,
+      waterTarget: targetWater,
+    };
+
+    const { nextState, freezeSavedStreak } = calculateNextStreaks(
+      currentState,
+      yesterdaySummary,
+      isMonday,
+      daysMissed
+    );
+
+    // Save next state to db app_state
+    await db.runAsync("INSERT OR REPLACE INTO app_state (key, value) VALUES ('active_food_log_streak', ?)", nextState.foodLogStreak.toString());
+    await db.runAsync("INSERT OR REPLACE INTO app_state (key, value) VALUES ('active_water_streak', ?)", nextState.waterStreak.toString());
+    await db.runAsync("INSERT OR REPLACE INTO app_state (key, value) VALUES ('streak_freeze_used_this_week', ?)", nextState.freezeUsedThisWeek ? 'true' : 'false');
+
+    if (freezeSavedStreak) {
+      // Store alert message for dashboard to query and show
+      await db.runAsync("INSERT OR REPLACE INTO app_state (key, value) VALUES ('streak_freeze_alert_message', 'STREAK DISELAMATKAN! (1X/MINGGU)')");
+    }
 
     // Update app_state to today
     await db.runAsync(
