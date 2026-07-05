@@ -8,7 +8,7 @@ export interface FoodItem {
   protein_g: number;
   fat_g: number;
   default_serving_g: number;
-  source: 'tkpi' | 'custom';
+  source: 'tkpi' | 'custom' | 'local';
   is_custom: number;
 }
 
@@ -23,12 +23,18 @@ export interface RestrictionTag {
   id: number;
   code: string;
   label: string;
+  type?: 'restriction' | 'preference';
 }
 
 export const foodRepo = {
   async getRestrictionTags(): Promise<RestrictionTag[]> {
     const db = await getDb();
     return db.getAllAsync<RestrictionTag>('SELECT * FROM food_restriction_tags ORDER BY id ASC');
+  },
+
+  async getTagsByType(type: 'restriction' | 'preference'): Promise<RestrictionTag[]> {
+    const db = await getDb();
+    return db.getAllAsync<RestrictionTag>('SELECT * FROM food_restriction_tags WHERE type = ? ORDER BY id ASC', type);
   },
 
   async searchFoods(query: string, restrictedTagIds: number[] = []): Promise<FoodItem[]> {

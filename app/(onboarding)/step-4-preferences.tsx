@@ -14,10 +14,16 @@ export default function Step4Preferences() {
   const { loadDailyData } = useDashboardStore();
   const { playSfx } = useSfx();
 
-  const [tags, setTags] = useState<RestrictionTag[]>([]);
-  const [selectedTagIds, setSelectedTagIds] = useState<number[]>(
+  const [restrictions, setRestrictions] = useState<RestrictionTag[]>([]);
+  const [preferences, setPreferences] = useState<RestrictionTag[]>([]);
+
+  const [selectedRestIds, setSelectedRestIds] = useState<number[]>(
     onboardingTemp.restrictionTagIds || []
   );
+  const [selectedPrefIds, setSelectedPrefIds] = useState<number[]>(
+    onboardingTemp.preferenceTagIds || []
+  );
+
   const [dbLoading, setDbLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -25,10 +31,12 @@ export default function Step4Preferences() {
   useEffect(() => {
     async function loadTags() {
       try {
-        const data = await foodRepo.getRestrictionTags();
-        setTags(data);
+        const restTags = await foodRepo.getTagsByType('restriction');
+        const prefTags = await foodRepo.getTagsByType('preference');
+        setRestrictions(restTags);
+        setPreferences(prefTags);
       } catch (err) {
-        console.error('Failed to load restriction tags:', err);
+        console.error('Failed to load tags:', err);
       } finally {
         setDbLoading(false);
       }
@@ -36,9 +44,16 @@ export default function Step4Preferences() {
     loadTags();
   }, []);
 
-  const toggleTag = (id: number) => {
+  const toggleRestriction = (id: number) => {
     playSfx('beep');
-    setSelectedTagIds((prev) =>
+    setSelectedRestIds((prev) =>
+      prev.includes(id) ? prev.filter((tId) => tId !== id) : [...prev, id]
+    );
+  };
+
+  const togglePreference = (id: number) => {
+    playSfx('beep');
+    setSelectedPrefIds((prev) =>
       prev.includes(id) ? prev.filter((tId) => tId !== id) : [...prev, id]
     );
   };
@@ -48,7 +63,10 @@ export default function Step4Preferences() {
     setError('');
     
     // Save selections to temp store first
-    updateOnboardingTemp({ restrictionTagIds: selectedTagIds });
+    updateOnboardingTemp({ 
+      restrictionTagIds: selectedRestIds,
+      preferenceTagIds: selectedPrefIds
+    });
 
     try {
       // Execute the profile creation & calculation engine save
@@ -83,21 +101,22 @@ export default function Step4Preferences() {
         <View style={styles.container}>
           <Text style={styles.stepTitle}>STEP 4 / 4</Text>
           <Text style={styles.title}>PREFERENSI MAKANAN</Text>
-          <Text style={styles.subtitle}>PILIH PANTANGAN / DIET ANDA:</Text>
-
+          
           {error ? (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>* {error} *</Text>
             </View>
           ) : null}
 
+          {/* SECTION 1: Restrictions */}
+          <Text style={styles.sectionHeader}>PANTANGAN & ALERGI (OPSIONAL):</Text>
           <View style={styles.optionsContainer}>
-            {tags.map((tag) => {
-              const isSelected = selectedTagIds.includes(tag.id);
+            {restrictions.map((tag) => {
+              const isSelected = selectedRestIds.includes(tag.id);
               return (
                 <Pressable
                   key={tag.id}
-                  onPress={() => toggleTag(tag.id)}
+                  onPress={() => toggleRestriction(tag.id)}
                   style={styles.checkboxPressable}
                 >
                   <PixelCard
@@ -112,7 +131,40 @@ export default function Step4Preferences() {
                       <Text style={[styles.checkboxText, isSelected ? styles.selectedText : null]}>
                         {isSelected ? '[X]' : '[ ]'}
                       </Text>
-                      <Text style={[styles.label, isSelected ? styles.selectedText : null]}>
+                      <Text style={[styles.labelText, isSelected ? styles.selectedText : null]}>
+                        {tag.label.toUpperCase()}
+                      </Text>
+                    </View>
+                  </PixelCard>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* SECTION 2: Preferences */}
+          <Text style={styles.sectionHeader}>SAYA SUKA MAKAN (OPSIONAL):</Text>
+          <View style={styles.optionsContainer}>
+            {preferences.map((tag) => {
+              const isSelected = selectedPrefIds.includes(tag.id);
+              return (
+                <Pressable
+                  key={tag.id}
+                  onPress={() => togglePreference(tag.id)}
+                  style={styles.checkboxPressable}
+                >
+                  <PixelCard
+                    style={[
+                      styles.checkboxCard,
+                      isSelected ? styles.selectedCard : null,
+                    ]}
+                    innerStyle={{ padding: 12 }}
+                    hasShadow={false}
+                  >
+                    <View style={styles.checkboxRow}>
+                      <Text style={[styles.checkboxText, isSelected ? styles.selectedText : null]}>
+                        {isSelected ? '[X]' : '[ ]'}
+                      </Text>
+                      <Text style={[styles.labelText, isSelected ? styles.selectedText : null]}>
                         {tag.label.toUpperCase()}
                       </Text>
                     </View>
@@ -177,16 +229,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#000000',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 24,
     lineHeight: 24,
   },
-  subtitle: {
+  sectionHeader: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 8,
-    color: '#888888',
-    textAlign: 'center',
+    color: '#000000',
+    marginBottom: 12,
     lineHeight: 14,
-    marginBottom: 24,
+    textDecorationLine: 'underline',
   },
   errorContainer: {
     borderWidth: 2,
@@ -205,7 +257,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   checkboxPressable: {
-    marginBottom: 12,
+    marginBottom: 8,
   },
   checkboxCard: {
     backgroundColor: '#FFFFFF',
@@ -223,9 +275,9 @@ const styles = StyleSheet.create({
     color: '#000000',
     marginRight: 12,
   },
-  label: {
+  labelText: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 9,
+    fontSize: 8,
     color: '#000000',
     flex: 1,
     lineHeight: 14,
@@ -235,6 +287,7 @@ const styles = StyleSheet.create({
   },
   navigationRow: {
     flexDirection: 'row',
+    marginTop: 12,
   },
   backButton: {
     flex: 1,
