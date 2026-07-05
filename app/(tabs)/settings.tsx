@@ -368,7 +368,7 @@ export default function Settings() {
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>PEMBUAT:</Text>
-            <Text style={[styles.infoVal, { fontSize: 6.5, flex: 1, textAlign: 'right' }]} numberOfLines={2}>
+            <Text style={[styles.infoVal, { fontSize: 8, flex: 1, textAlign: 'right' }]} numberOfLines={2}>
               MOCHAMMAD BAYU ADHIE NUGROHO
             </Text>
           </View>
@@ -376,7 +376,7 @@ export default function Settings() {
             <Text style={styles.infoLabel}>ENGINE:</Text>
             <Text style={styles.infoVal}>EXPO ROUTER & SQLITE</Text>
           </View>
-          <Text style={[styles.descText, { marginTop: 12, marginBottom: 0, textAlign: 'center', fontSize: 6 }]}>
+          <Text style={[styles.descText, { marginTop: 12, marginBottom: 0, textAlign: 'center', fontSize: 8 }]}>
             © 2026 MOCHAMMAD BAYU ADHIE NUGROHO. ALL RIGHTS RESERVED.
           </Text>
         </PixelCard>

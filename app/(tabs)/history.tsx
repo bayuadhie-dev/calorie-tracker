@@ -81,11 +81,11 @@ export default function History() {
 
   const getMoodEmoji = (mood: DailyHistoryRow['mood']) => {
     switch (mood) {
-      case 'great': return '😀';
-      case 'good': return '🙂';
-      case 'neutral': return '😐';
-      case 'bad': return '🙁';
-      case 'terrible': return '😭';
+      case 'great': return ':-D';
+      case 'good': return ':-)';
+      case 'neutral': return ':-|';
+      case 'bad': return ':-(';
+      case 'terrible': return `:'(`;
       default: return null;
     }
   };
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   },
   noteLabel: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
+    fontSize: 8,
     color: '#888888',
     marginBottom: 4,
   },
@@ -555,7 +555,7 @@ const styles = StyleSheet.create({
   },
   chartDateLabel: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
+    fontSize: 8,
     color: '#888888',
     marginTop: 6,
   },
@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
   // Weight Chart Styles
   weightBarVal: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
+    fontSize: 8,
     color: '#000000',
     marginBottom: 4,
   },

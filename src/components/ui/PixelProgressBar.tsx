@@ -18,7 +18,7 @@ export default function PixelProgressBar({
   const clampedProgress = Math.max(0, Math.min(1, progress));
   
   // Calculate how many segments are active
-  const activeSegments = Math.round(clampedProgress * segmentsCount);
+  const activeSegments = Math.floor(clampedProgress * segmentsCount);
   
   // Generate segments array
   const segments = Array.from({ length: segmentsCount });

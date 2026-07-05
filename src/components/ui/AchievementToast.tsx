@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   },
   dismissHint: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 5,
+    fontSize: 7,
     color: '#888888',
     textAlign: 'center',
   },

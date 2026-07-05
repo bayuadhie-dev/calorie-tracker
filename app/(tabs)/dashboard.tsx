@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [selectedMood, setSelectedMood] = useState<'great' | 'good' | 'neutral' | 'bad' | 'terrible'>('neutral');
   const [dailyNoteText, setDailyNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [freezeAlertMessage, setFreezeAlertMessage] = useState<string | null>(null);
 
   const loadDashboardData = async () => {
     if (!profile) return;
@@ -88,7 +89,7 @@ export default function Dashboard() {
         "SELECT value FROM app_state WHERE key = 'streak_freeze_alert_message'"
       );
       if (alertRow && alertRow.value) {
-        alert(alertRow.value);
+        setFreezeAlertMessage(alertRow.value);
         // Clear alert
         await db.runAsync(
           "DELETE FROM app_state WHERE key = 'streak_freeze_alert_message'"
@@ -205,12 +206,12 @@ export default function Dashboard() {
 
   const getMoodEmoji = (mood: string) => {
     switch (mood) {
-      case 'great': return '😀';
-      case 'good': return '🙂';
-      case 'neutral': return '😐';
-      case 'bad': return '🙁';
-      case 'terrible': return '😭';
-      default: return '😐';
+      case 'great': return ':-D';
+      case 'good': return ':-)';
+      case 'neutral': return ':-|';
+      case 'bad': return ':-(';
+      case 'terrible': return `:'(`;
+      default: return ':-|';
     }
   };
 
@@ -512,6 +513,42 @@ export default function Dashboard() {
           </PixelCard>
         </View>
       </Modal>
+
+      {freezeAlertMessage ? (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setFreezeAlertMessage(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <PixelCard style={styles.modalCard} innerStyle={{ padding: 16 }}>
+              <Text style={styles.modalTitle}>⚠️ STREAK FREEZE ALERT ⚠️</Text>
+              <Text
+                style={{
+                  fontFamily: 'PressStart2P-Regular',
+                  fontSize: 8,
+                  color: '#000000',
+                  lineHeight: 14,
+                  textAlign: 'center',
+                  marginBottom: 16,
+                }}
+              >
+                {freezeAlertMessage}
+              </Text>
+              <PixelButton
+                variant="primary"
+                onPress={() => {
+                  playSfx('beep');
+                  setFreezeAlertMessage(null);
+                }}
+              >
+                [ OK ]
+              </PixelButton>
+            </PixelCard>
+          </View>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -640,7 +677,7 @@ const styles = StyleSheet.create({
   },
   macroVal: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
+    fontSize: 8,
     color: '#888888',
   },
   macroBar: {
@@ -758,10 +795,10 @@ const styles = StyleSheet.create({
   },
   projectionSubText: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
+    fontSize: 8,
     color: '#888888',
     marginTop: 6,
-    lineHeight: 10,
+    lineHeight: 12,
   },
   // Reminder Card Styles
   reminderCard: {
@@ -843,7 +880,7 @@ const styles = StyleSheet.create({
   },
   moodText: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 5,
+    fontSize: 8,
     color: '#000000',
   },
   notesInput: {

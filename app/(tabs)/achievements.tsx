@@ -221,8 +221,8 @@ const styles = StyleSheet.create({
   },
   badgeDesc: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 6,
-    lineHeight: 10,
+    fontSize: 8,
+    lineHeight: 12,
     marginBottom: 6,
   },
   unlockedDesc: {
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   },
   unlockedDate: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 5,
+    fontSize: 7,
     color: '#666666',
   },
 });
