@@ -1,5 +1,5 @@
 export interface WeightProjection {
-  averageDailyDeficit: number; // positive for deficit, negative for surplus
+  averageDailyDeficit: number; // Blended deficit
   remainingKg: number;
   estimatedDays: number;
   estimatedDate: string; // 'YYYY-MM-DD'
@@ -13,7 +13,8 @@ export interface DailyHistoryRecord {
 }
 
 /**
- * Calculates weight projection based on past 7 days of calorie history.
+ * Calculates weight projection based on past 7 days of calorie history and BMR/TDEE expectation.
+ * Hybrid Model: Blends expected daily deficit with actual daily deficit.
  * Pure function, testable without database.
  */
 export function calculateWeightProjection(
@@ -21,11 +22,12 @@ export function calculateWeightProjection(
   targetWeight: number,
   goal: 'diet' | 'maintenance' | 'surplus',
   history: DailyHistoryRecord[],
-  todayStr: string // Pass today's date for relative date calculation
+  tdee: number,
+  targetCalorie: number,
+  todayStr: string
 ): WeightProjection {
   const remainingKg = Math.abs(currentWeight - targetWeight);
 
-  // If already reached target or goal is maintenance
   if (remainingKg <= 0.1) {
     return {
       averageDailyDeficit: 0,
@@ -46,38 +48,41 @@ export function calculateWeightProjection(
     };
   }
 
-  // Calculate average daily deficit or surplus over the available history (up to 7 days)
-  if (history.length === 0) {
-    return {
-      averageDailyDeficit: 0,
-      remainingKg,
-      estimatedDays: -1,
-      estimatedDate: '',
-      isOnTrack: false
-    };
+  // 1. Calculate expected daily deficit/surplus from TDEE vs Target Calorie
+  const expectedDailyDeficit = tdee - targetCalorie;
+
+  // 2. Calculate actual average daily deficit from history
+  let actualAverageDeficit = 0;
+  if (history.length > 0) {
+    let totalDeficit = 0;
+    for (const record of history) {
+      totalDeficit += (record.target_calorie - record.total_calorie);
+    }
+    actualAverageDeficit = totalDeficit / history.length;
   }
 
-  let totalDeficit = 0;
-  for (const record of history) {
-    totalDeficit += (record.target_calorie - record.total_calorie);
-  }
-  const averageDailyDeficit = totalDeficit / history.length;
+  // 3. Blend expected and actual based on history length (0 to 7 days)
+  // If 0 days of logs: 100% expected, 0% actual
+  // If 7+ days of logs: 0% expected, 100% actual
+  const actualWeight = Math.min(1.0, history.length / 7);
+  const expectedWeight = 1.0 - actualWeight;
+  const blendedDeficit = (actualAverageDeficit * actualWeight) + (expectedDailyDeficit * expectedWeight);
 
   let estimatedDays = -1;
   let isOnTrack = false;
   let estimatedDate = '';
 
   if (goal === 'diet') {
-    // We want a positive deficit (eating less than target) to lose weight
-    if (averageDailyDeficit > 0) {
-      estimatedDays = Math.ceil((remainingKg * 7700) / averageDailyDeficit);
+    // We want a positive deficit (eating less than TDEE) to lose weight
+    if (blendedDeficit > 0) {
+      estimatedDays = Math.ceil((remainingKg * 7700) / blendedDeficit);
       isOnTrack = true;
     }
   } else if (goal === 'surplus') {
-    // We want a negative deficit (eating more than target, i.e., surplus) to gain weight
-    const averageDailySurplus = -averageDailyDeficit;
-    if (averageDailySurplus > 0) {
-      estimatedDays = Math.ceil((remainingKg * 7700) / averageDailySurplus);
+    // We want a negative deficit (eating more than TDEE, i.e., surplus) to gain weight
+    const blendedSurplus = -blendedDeficit;
+    if (blendedSurplus > 0) {
+      estimatedDays = Math.ceil((remainingKg * 7700) / blendedSurplus);
       isOnTrack = true;
     }
   }
@@ -92,7 +97,7 @@ export function calculateWeightProjection(
   }
 
   return {
-    averageDailyDeficit,
+    averageDailyDeficit: blendedDeficit,
     remainingKg,
     estimatedDays,
     estimatedDate,

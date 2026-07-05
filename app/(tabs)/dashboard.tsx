@@ -52,6 +52,8 @@ export default function Dashboard() {
         profile.target_weight_kg,
         profile.goal,
         rows,
+        profile.tdee || 2000,
+        profile.target_calorie || 2000,
         todayStr
       );
       setProjection(proj);
