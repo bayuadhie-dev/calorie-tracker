@@ -48,6 +48,17 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="achievements"
+        options={{
+          title: 'BADGE',
+          tabBarIcon: ({ color, focused }) => (
+            <Text style={[styles.iconText, { color }]}>
+              {focused ? 'A' : 'a'}
+            </Text>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'PENGATURAN',
